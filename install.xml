@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+    <name>Opencart 3 Common Modifications</name>
+    <code>oc_common</code>
+    <version>0.1-dev</version>
+    <author>Ricardo Vigatti</author>
+    <link>http://ricardovigatti.com</link>
+
+    <!-- create short_description field for products -->
+    <file path="catalog/controller/{account/wishlist,extension/module/}*.php">
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="before"><![CDATA[
+                $short_description = null;
+                $tmpDescription = $product_info['description'];
+
+                if (!empty($tmpDescription)) {
+                    $tmpDescription = html_entity_decode($tmpDescription, ENT_QUOTES, 'UTF-8');
+
+                    $doc = new DOMDocument();
+                    $doc->loadHTML($tmpDescription);
+
+                    $xpath = new DOMXpath($doc);
+                    $ps = $xpath->query('//p[@class]');
+                    foreach ($ps as $p) {
+                        if ($p->getAttribute('class') == 'lead') {
+                            $short_description = utf8_decode($p->nodeValue);
+                        }
+
+                        continue;
+                    }
+                }
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="after"><![CDATA[
+                'short_description' => $short_description,
+            ]]></add>
+        </operation>
+    </file>
+
+    <file path="catalog/controller/product/{category,manufacturer,product,search,special}.php">
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="before"><![CDATA[
+                $short_description = null;
+                $tmpDescription = $result['description'];
+
+                if (!empty($tmpDescription)) {
+                    $tmpDescription = html_entity_decode($tmpDescription, ENT_QUOTES, 'UTF-8');
+
+                    $doc = new DOMDocument();
+                    $doc->loadHTML($tmpDescription);
+
+                    $xpath = new DOMXpath($doc);
+                    $ps = $xpath->query('//p[@class]');
+
+                    foreach ($ps as $p) {
+                        if ($p->getAttribute('class') == 'lead') {
+                            $short_description = utf8_decode($p->nodeValue);
+                        }
+
+                        continue;
+                    }
+                }
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="after"><![CDATA[
+                'short_description' => $short_description,
+            ]]></add>
+        </operation>
+    </file>
+
+    <file path="catalog/controller/checkout/cart.php">
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="before"><![CDATA[
+                $this->load->model('catalog/product');
+                $tempProduct = $this->model_catalog_product->getProduct($product['product_id']);
+
+                $short_description = null;
+                $tmpDescription = $tempProduct['description'];
+
+                if (!empty($tmpDescription)) {
+                    $tmpDescription = html_entity_decode($tmpDescription, ENT_QUOTES, 'UTF-8');
+
+                    $doc = new DOMDocument();
+                    $doc->loadHTML($tmpDescription);
+
+                    $xpath = new DOMXpath($doc);
+                    $ps = $xpath->query('//p[@class]');
+
+                    foreach ($ps as $p) {
+                        if ($p->getAttribute('class') == 'lead') {
+                            $short_description = utf8_decode($p->nodeValue);
+                        }
+
+                        continue;
+                    }
+                }
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="after"><![CDATA[
+                'short_description' => $short_description,
+            ]]></add>
+        </operation>
+    </file>
+    <!-- / -->
+
+    <!-- implement ratings summary for a product -->
+    <file path="catalog/model/catalog/review.php">
+        <operation>
+            <search><![CDATA[class ModelCatalogReview extends Model {]]></search>
+            <add position="after"><![CDATA[
+                public function getRatingsByProductId($product_id) {
+                    $query = $this->db->query("SELECT r.rating FROM " . DB_PREFIX . "review r LEFT JOIN " . DB_PREFIX . "product p ON (r.product_id = p.product_id) WHERE p.product_id = '" . (int)$product_id . "' AND p.date_available <= NOW() AND p.status = '1' AND r.status = '1'");
+
+                    return $query->rows;
+                }
+            ]]></add>
+        </operation>
+    </file>
+
+    <file path="catalog/controller/product/product.php">
+        <operation>
+            <search><![CDATA[$data['rating'] = (int)$product_info['rating'];]]></search>
+            <add position="after"><![CDATA[
+                $ratings = $this->model_catalog_review->getRatingsByProductId($this->request->get['product_id']);
+                $data['ratings'] = array_count_values(array_column($ratings, 'rating'));
+                $data['ratings_sum'] = array_sum($data['ratings']);
+            ]]></add>
+        </operation>
+    </file>
+    <!-- / -->
+
+    <!-- add unique class to body -->
+    <file path="catalog/controller/common/header.php">
+        <operation>
+            <search><![CDATA[return $this->load->view('common/header', $data);]]></search>
+            <add position="before"><![CDATA[
+                if (!isset($this->request->get['route'])) {
+                    $page = "common-home";
+                } else {
+                    $page = str_replace('/', '-', $this->request->get['route']);
+                }
+
+                $data['body_class'] = sprintf('page-%s', $page);
+            ]]></add>
+        </operation>
+    </file>
+    <!-- / -->
+
+    <!-- add alternative texts for cart -->
+    <file path="catalog/controller/common/cart.php">
+        <operation>
+            <search><![CDATA[$data['text_items'] = sprintf($this->language->get('text_items'), $this->cart->countProducts() + (isset($this->session->data['vouchers']) ? count($this->session->data['vouchers']) : 0), $this->currency->format($total, $this->session->data['currency']));]]></search>
+            <add position="after"><![CDATA[
+                $data['text_items_alt'] = sprintf($this->language->get('text_items_alt'), $this->cart->countProducts() + (isset($this->session->data['vouchers']) ? count($this->session->data['vouchers']) : 0), $this->currency->format($total, $this->session->data['currency']));
+            ]]></add>
+        </operation>
+    </file>
+    <!-- / -->
+
+    <!-- add alternative texts for header -->
+    <file path="catalog/controller/common/header.php">
+        <operation>
+            <search><![CDATA[$data['text_wishlist'] = sprintf($this->language->get('text_wishlist'), $this->model_account_wishlist->getTotalWishlist());]]></search>
+            <add position="after"><![CDATA[
+                $data['text_wishlist_alt'] = sprintf($this->language->get('text_wishlist_alt'), $this->model_account_wishlist->getTotalWishlist());
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['text_wishlist'] = sprintf($this->language->get('text_wishlist'), (isset($this->session->data['wishlist']) ? count($this->session->data['wishlist']) : 0));]]></search>
+            <add position="after"><![CDATA[
+                $data['text_wishlist_alt'] = sprintf($this->language->get('text_wishlist_alt'), (isset($this->session->data['wishlist']) ? count($this->session->data['wishlist']) : 0));
+            ]]></add>
+        </operation>
+    </file>
+    <!-- / -->
+
+    <!-- add "text_login_prices" text for products and product modules -->
+    <file path="catalog/controller/product/product.php">
+        <operation>
+            <search><![CDATA[$data['header'] = $this->load->controller('common/header');]]></search>
+            <add position="after"><![CDATA[
+                $data['logged'] = $this->customer->isLogged();
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['text_login'] = sprintf($this->language->get('text_login'), $this->url->link('account/login', '', true), $this->url->link('account/register', '', true));]]></search>
+            <add position="after"><![CDATA[
+                $data['text_login_prices'] = sprintf($this->language->get('text_login_prices'), $this->url->link('account/login', '', true), $this->url->link('account/register', '', true));
+            ]]></add>
+        </operation>
+    </file>
+
+    <file path="catalog/controller/extension/module/{bestseller,latest,featured,special}.php">
+        <operation>
+            <search><![CDATA[return $this->load->view('extension/module/featured', $data);]]></search>
+            <add position="before"><![CDATA[
+                $data['logged'] = $this->customer->isLogged();
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$this->load->language('extension/module/featured');]]></search>
+            <add position="after"><![CDATA[
+                $data['text_login_prices'] = sprintf($this->language->get('text_login_prices'), $this->url->link('account/login', '', true), $this->url->link('account/register', '', true));
+            ]]></add>
+        </operation>
+    </file>
+    <!-- / -->
+
+    <!-- add category title product -->
+    <file path="catalog/controller/extension/module/{bestseller,latest,featured,special}.php">
+        <operation>
+            <search><![CDATA[$this->load->model('catalog/product');]]></search>
+            <add position="before"><![CDATA[
+                $this->load->model('catalog/category');
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="before"><![CDATA[
+                if (isset($product_info)) {
+                    $result = $product_info;
+                }
+
+                $categories = $this->model_catalog_product->getCategories($result['product_id']);
+                if ($categories) {
+                    $categories_info = $this->model_catalog_category->getCategory($categories[0]['category_id']);
+                }
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="after"><![CDATA[
+                'category_title'  => isset($categories_info) ? $categories_info['name'] : null,
+            ]]></add>
+        </operation>
+    </file>
+
+    <file path="catalog/controller/product/special.php">
+        <operation>
+            <search><![CDATA[$this->load->model('catalog/product');]]></search>
+            <add position="before"><![CDATA[
+                $this->load->model('catalog/category');
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="before"><![CDATA[
+                $categories = $this->model_catalog_product->getCategories($result['product_id']);
+                if ($categories) {
+                    $categories_info = $this->model_catalog_category->getCategory($categories[0]['category_id']);
+                }
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="after"><![CDATA[
+                'category_title' => isset($categories_info) ? $categories_info['name'] : null,
+            ]]></add>
+        </operation>
+    </file>
+
+    <file path="catalog/controller/product/search.php">
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="before"><![CDATA[
+                $categories = $this->model_catalog_product->getCategories($result['product_id']);
+                if ($categories) {
+                    $categories_info = $this->model_catalog_category->getCategory($categories[0]['category_id']);
+                }
+            ]]></add>
+        </operation>
+
+        <operation>
+            <search><![CDATA[$data['products'][] = array(]]></search>
+            <add position="after"><![CDATA[
+                'category_title' => isset($categories_info) ? $categories_info['name'] : null,
+            ]]></add>
+        </operation>
+    </file>
+    <!-- / -->
+
+</modification>
